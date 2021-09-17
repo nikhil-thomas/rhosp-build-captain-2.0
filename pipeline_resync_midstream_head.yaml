@@ -115,3 +115,27 @@ spec:
           set -x
           # Launch script
           openshift/release/update-to-head.sh
+  finally:
+  - name: format-notification
+    taskSpec:
+      steps:
+      - name: message
+        image: ubuntu
+        script: |
+          #!/usr/bin/env bash
+          echo syncing done
+          TODO: format slack notification with SHA of upstream commits
+
+  - name: nofity-slack
+    runAfter:
+    - format-notification
+    taskRef:
+      name: send-to-webhook-slack
+    params:
+    - name: webhook-secret
+      value: tektoncd-slack-hacks-url
+    - name: message
+      value: |
+        :done_it_is: tektoncd/pipeline#main synced to nikhil-thomas/pipeline#release-next
+
+        :done_it_is: tektoncd/triggers#main synced to nikhil-thomas/triggers#release-next
