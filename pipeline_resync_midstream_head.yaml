@@ -1,0 +1,117 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: keeping-up-with-upstream
+spec:
+  params:
+  - name: SYNC_COMPONENTS
+    description: the list of components which should be synced in a pipelinerun
+    default: ["pipelines", "triggers"]
+    type: array
+  workspaces:
+  - name: source
+  tasks:
+  - name: fetch-pipelines-repository
+    taskRef:
+      name: git-clone
+    workspaces:
+    - name: output
+      workspace: source
+    params:
+    - name: url
+      value: https://github.com/nikhil-thomas/pipeline
+    - name: revision
+      value: rhosp-build-captain-main
+    - name: subdirectory
+      value: "tektoncd-pipeline"
+    - name: deleteExisting
+      value: "true"
+  - name: sync-pipeline-repo
+    runAfter:
+    - fetch-pipelines-repository
+    workspaces:
+    - workspace: source
+      name: source
+      subPath: tektoncd-pipeline
+    taskSpec:
+      workspaces:
+      - name: source
+      steps:
+      - name: sync-repos
+        workingDir: $(workspaces.source.path)
+        env:
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: nightly-ci-github-hub-token
+              key: hub-token
+        image: gcr.io/tekton-releases/dogfooding/hub:latest
+        script: |
+          #!/usr/bin/env bash
+          set -xe
+          # Configure git email and name
+          pwd
+          ls
+          ls ..
+          echo $(workspaces.source.path)/tektoncd-pipeline
+          git config user.email "pipelines-dev@redhat.com"
+          git config user.name "OpenShift Pipelines"
+
+          ## Make sure we can push to the branch with our GITHUB_TOKEN (disable logging to not leak)
+          set +x
+          git remote add upstream $(echo "https://github.com/tektoncd/pipeline.git"|sed "s,https://github.com/,https://${GITHUB_TOKEN}@github.com/,")
+          git remote add openshift $(echo "https://github.com/nikhil-thomas/pipeline.git"|sed "s,https://github.com/,https://${GITHUB_TOKEN}@github.com/,")
+          set -x
+          # Launch script
+          openshift/release/update-to-head.sh
+  - name: fetch-triggers-repository
+    taskRef:
+      name: git-clone
+    workspaces:
+    - name: output
+      workspace: source
+    params:
+    - name: url
+      value: https://github.com/nikhil-thomas/triggers
+    - name: revision
+      value: rhosp-build-captain-main
+    - name: subdirectory
+      value: "tektoncd-triggers"
+    - name: deleteExisting
+      value: "true"
+  - name: sync-triggers-repos
+    runAfter:
+    - fetch-triggers-repository
+    workspaces:
+    - workspace: source
+      name: source
+      subPath: tektoncd-triggers
+    taskSpec:
+      workspaces:
+      - name: source
+      steps:
+      - name: sync-repos
+        workingDir: $(workspaces.source.path)
+        env:
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: nightly-ci-github-hub-token
+              key: hub-token
+        image: gcr.io/tekton-releases/dogfooding/hub:latest
+        script: |
+          #!/usr/bin/env bash
+          set -xe
+          pwd
+          # Configure git email and name
+          git config user.email "pipelines-dev@redhat.com"
+          git config user.name "OpenShift Pipelines"
+
+          ## Make sure we can push to the branch with our GITHUB_TOKEN (disable logging to not leak)
+          set +x
+          git remote add upstream $(echo "https://github.com/tektoncd/triggers.git"|sed "s,https://github.com/,https://${GITHUB_TOKEN}@github.com/,")
+          git remote add openshift $(echo "https://github.com/nikhil-thomas/triggers.git"|sed "s,https://github.com/,https://${GITHUB_TOKEN}@github.com/,")
+          set -x
+          # Launch script
+          openshift/release/update-to-head.sh
